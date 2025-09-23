@@ -8,11 +8,58 @@ from werkzeug.serving import make_server
 import xml.etree.ElementTree as ET
 import requests
 import socket
+import subprocess
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 import uuid
 import json
+
+def obtener_ip_real():
+    """
+    Obtiene la IP real de la máquina en la red local.
+    """
+    # Método 1: Conectar a un servidor externo (más confiable)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            if not ip.startswith("127."):
+                return ip
+    except:
+        pass
+    
+    # Método 2: Usar ip route (Linux/Mac)
+    try:
+        result = subprocess.run(['ip', 'route', 'get', '8.8.8.8'], 
+                              capture_output=True, text=True, timeout=3)
+        match = re.search(r'src (\d+\.\d+\.\d+\.\d+)', result.stdout)
+        if match:
+            return match.group(1)
+    except:
+        pass
+    
+    # Método 3: Usar hostname -I (Linux)
+    try:
+        result = subprocess.run(['hostname', '-I'], 
+                              capture_output=True, text=True, timeout=3)
+        ips = result.stdout.strip().split()
+        for ip in ips:
+            if not ip.startswith("127.") and "." in ip:
+                return ip
+    except:
+        pass
+    
+    # Fallback
+    try:
+        ip = socket.gethostbyname(socket.gethostname())
+        if not ip.startswith("127."):
+            return ip
+    except:
+        pass
+    
+    return "127.0.0.1"
 
 app = Flask(__name__)
 CORS(app)
@@ -401,8 +448,8 @@ def main():
     print("🚀 Iniciando Balanceador de Cargas...")
     print("=" * 50)
     
-    # Obtener IP local
-    ip_local = socket.gethostbyname(socket.gethostname())
+    # Obtener IP real
+    ip_local = obtener_ip_real()
     puerto = 5000
     
     print("📡 Servicios disponibles:")
